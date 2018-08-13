@@ -13,7 +13,7 @@ class EncoderCNN(nn.Module):
         modules = list(resnet.children())[:-1]
         self.resnet = nn.Sequential(*modules)
         self.embed = nn.Linear(resnet.fc.in_features, embed_size)
-
+        
     def forward(self, images):
         features = self.resnet(images)
         features = features.view(features.size(0), -1)
@@ -23,11 +23,30 @@ class EncoderCNN(nn.Module):
 
 class DecoderRNN(nn.Module):
     def __init__(self, embed_size, hidden_size, vocab_size, num_layers=1):
-        pass
+        super(DecoderRNN, self).__init__()
+        self.embedding = nn.Embedding(vocab_size, embed_size)
+        self.lstm = nn.LSTM(embed_size, hidden_size, num_layers, batch_first=True)
+        self.linear = nn.Linear(hidden_size, vocab_size)
     
     def forward(self, features, captions):
-        pass
+        embed_captions = self.embedding(captions[:,:-1])
+        embed_captions = torch.cat((features.unsqueeze(1), embed_captions), 1)
+        output, _ = self.lstm(embed_captions)
+        x = self.linear(output)
+        return x
 
     def sample(self, inputs, states=None, max_len=20):
         " accepts pre-processed image tensor (inputs) and returns predicted sentence (list of tensor ids of length max_len) "
-        pass
+        result = []
+        for i in range(max_len):
+            outputs, states = self.lstm(inputs, states)
+            outputs = self.linear(outputs.squeeze(1))
+            _, predict = outputs.max(1)
+            result.append(predict)
+            if predict == 1:
+                break
+            inputs = self.embedding(predict)
+            inputs = inputs.unsqueeze(1)
+
+        result = torch.stack(result, 1)
+        return result.squeeze().cpu().numpy().tolist()
